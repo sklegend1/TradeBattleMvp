@@ -10,10 +10,10 @@ export async function getBTCPrice(): Promise<number> {
     let url = BINANCE_URL;
 
     // In development, use local proxy if available
-    if (process.env.NODE_ENV === 'development') {
-      // Proxy format: http://127.0.0.1:10808/https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT
-      url = `${LOCAL_PROXY}/${BINANCE_URL}`;
-    }
+    // if (process.env.NODE_ENV === 'development') {
+    //   // Proxy format: http://127.0.0.1:10808/https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT
+    //   url = `${LOCAL_PROXY}/${BINANCE_URL}`;
+    // }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
