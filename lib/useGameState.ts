@@ -13,6 +13,10 @@ export function useGameState(roomId: string, enabled: boolean = true) {
       return;
     }
 
+    // Reset state when polling is newly enabled
+    setLoading(true);
+    setError(null);
+
     const fetchGameState = async () => {
       try {
         const response = await fetch(
@@ -28,10 +32,16 @@ export function useGameState(roomId: string, enabled: boolean = true) {
         setError(null);
         setLoading(false);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to fetch game state'
-        );
-        setLoading(false);
+        // Only show error if we have never successfully loaded state
+        setGameState((prev) => {
+          if (prev === null) {
+            setError(
+              err instanceof Error ? err.message : 'Failed to fetch game state'
+            );
+            setLoading(false);
+          }
+          return prev;
+        });
       }
     };
 

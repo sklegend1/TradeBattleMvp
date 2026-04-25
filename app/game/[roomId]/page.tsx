@@ -19,7 +19,8 @@ export default function GamePage({
   const playerNumber = (searchParams.get('player') || '1') as '1' | '2';
   const roomId = resolvedParams.roomId;
 
-  const { gameState, loading, error } = useGameState(roomId, true);
+  const [joinComplete, setJoinComplete] = useState(false);
+  const { gameState, loading, error } = useGameState(roomId, joinComplete);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceLoadingError, setPriceLoadingError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -41,14 +42,20 @@ export default function GamePage({
 
         if (!response.ok) {
           const data = await response.json();
-          setActionMessage(data.error || 'Failed to join game');
-          setMessageType('error');
+          // Slot already taken is not a fatal error — player may be rejoining
+          if (data.error && !data.error.includes('already joined')) {
+            setActionMessage(data.error || 'Failed to join game');
+            setMessageType('error');
+          }
         }
       } catch (err) {
         setActionMessage(
           err instanceof Error ? err.message : 'Failed to join game'
         );
         setMessageType('error');
+      } finally {
+        // Start polling regardless — join may have already happened
+        setJoinComplete(true);
       }
     };
 
