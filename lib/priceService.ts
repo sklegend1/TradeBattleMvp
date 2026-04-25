@@ -1,74 +1,67 @@
-const BINANCE_URL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
-const LOCAL_PROXY = 'http://127.0.0.1:10808';
+// Production: CoinGecko and Coinbase are geo-unrestricted and free
+const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
+const COINBASE_URL = 'https://api.coinbase.com/v2/prices/BTC-USD/spot';
+
+// Local dev: Binance via proxy (Binance blocks US IPs, proxy required locally)
+//const BINANCE_PROXY_URL = 'http://127.0.0.1:10808/https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
+
+async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchFromCoinGecko(): Promise<number> {
+  const response = await fetchWithTimeout(COINGECKO_URL);
+  if (!response.ok) throw new Error(`CoinGecko error: ${response.status}`);
+  const data = (await response.json()) as { bitcoin: { usd: number } };
+  const price = data?.bitcoin?.usd;
+  if (!price || isNaN(price)) throw new Error('Invalid CoinGecko response');
+  return price;
+}
+
+async function fetchFromCoinbase(): Promise<number> {
+  const response = await fetchWithTimeout(COINBASE_URL);
+  if (!response.ok) throw new Error(`Coinbase error: ${response.status}`);
+  const data = (await response.json()) as { data: { amount: string } };
+  const price = parseFloat(data?.data?.amount);
+  if (isNaN(price)) throw new Error('Invalid Coinbase response');
+  return price;
+}
+
+// async function fetchFromBinanceProxy(): Promise<number> {
+//   const response = await fetchWithTimeout(BINANCE_PROXY_URL);
+//   if (!response.ok) throw new Error(`Binance proxy error: ${response.status}`);
+//   const data = (await response.json()) as { price: string };
+//   const price = parseFloat(data.price);
+//   if (isNaN(price)) throw new Error('Invalid Binance response');
+//   return price;
+// }
 
 /**
- * Fetch current BTC price from Binance API
- * Uses local proxy in development, direct API in production
+ * Fetch current BTC/USD price.
+ * - Local dev: Binance via local proxy → CoinGecko fallback → Coinbase fallback
+ * - Production: CoinGecko → Coinbase fallback
  */
 export async function getBTCPrice(): Promise<number> {
-  try {
-    let url = BINANCE_URL;
+  const sources: Array<() => Promise<number>> =
+    process.env.NODE_ENV === 'development'
+      ? [ fetchFromCoinGecko, fetchFromCoinbase]
+      : [fetchFromCoinGecko, fetchFromCoinbase];
 
-    // In development, use local proxy if available
-    // if (process.env.NODE_ENV === 'development') {
-    //   // Proxy format: http://127.0.0.1:10808/https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT
-    //   url = `${LOCAL_PROXY}/${BINANCE_URL}`;
-    // }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      throw new Error(`Binance API error: ${response.status}`);
+  for (const source of sources) {
+    try {
+      return await source();
+    } catch (err) {
+      console.warn('Price source failed, trying next:', (err as Error).message);
     }
-
-    const data = (await response.json()) as { symbol: string; price: string  };
-    const price = parseFloat(data.price);
-
-    if (isNaN(price)) {
-      throw new Error('Invalid price data from Binance API');
-    }
-
-    return price;
-  } catch (error) {
-    console.error('Error fetching BTC price:', error);
-
-    // // Fallback: try direct URL if proxy fails
-    // if (process.env.NODE_ENV === 'development') {
-    //   try {
-    //     const controller = new AbortController();
-    //     const timeout = setTimeout(() => controller.abort(), 5000);
-
-    //     const response = await fetch(BINANCE_URL, {
-    //       method: 'GET',
-    //       headers: {
-    //         'Content-Type': 'application/json',
-    //       },
-    //       signal: controller.signal,
-    //     });
-
-    //     clearTimeout(timeout);
-
-    //     if (response.ok) {
-    //       const data = (await response.json()) as { symbol: string; price: string };
-    //       return parseFloat(data.price);
-    //     }
-    //   } catch (fallbackError) {
-    //     console.error('Fallback BTC price fetch also failed:', fallbackError);
-    //   }
-    // }
-
-    // Return cached fallback price if all else fails
-    return 42500; // Fallback price for demo purposes
   }
+
+  console.error('All price sources failed, returning fallback');
+  return 0;
 }
