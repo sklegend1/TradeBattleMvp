@@ -1,8 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 import { useEffect, useState, use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useGameState } from '@/lib/useGameState';
