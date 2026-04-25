@@ -32,7 +32,7 @@ export async function getBTCPrice(): Promise<number> {
       throw new Error(`Binance API error: ${response.status}`);
     }
 
-    const data = (await response.json()) as { price: string };
+    const data = (await response.json()) as { symbol: string; price: string  };
     const price = parseFloat(data.price);
 
     if (isNaN(price)) {
@@ -43,30 +43,30 @@ export async function getBTCPrice(): Promise<number> {
   } catch (error) {
     console.error('Error fetching BTC price:', error);
 
-    // Fallback: try direct URL if proxy fails
-    if (process.env.NODE_ENV === 'development') {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
+    // // Fallback: try direct URL if proxy fails
+    // if (process.env.NODE_ENV === 'development') {
+    //   try {
+    //     const controller = new AbortController();
+    //     const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(BINANCE_URL, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal,
-        });
+    //     const response = await fetch(BINANCE_URL, {
+    //       method: 'GET',
+    //       headers: {
+    //         'Content-Type': 'application/json',
+    //       },
+    //       signal: controller.signal,
+    //     });
 
-        clearTimeout(timeout);
+    //     clearTimeout(timeout);
 
-        if (response.ok) {
-          const data = (await response.json()) as { symbol: string; price: string };
-          return parseFloat(data.price);
-        }
-      } catch (fallbackError) {
-        console.error('Fallback BTC price fetch also failed:', fallbackError);
-      }
-    }
+    //     if (response.ok) {
+    //       const data = (await response.json()) as { symbol: string; price: string };
+    //       return parseFloat(data.price);
+    //     }
+    //   } catch (fallbackError) {
+    //     console.error('Fallback BTC price fetch also failed:', fallbackError);
+    //   }
+    // }
 
     // Return cached fallback price if all else fails
     return 42500; // Fallback price for demo purposes
