@@ -44,6 +44,7 @@ export default function Home() {
             <h1 className="text-4xl font-bold text-white mb-2">
               🚀 Trade Battle
             </h1>
+            <p className='text-base text-slate-400'>Just a MVP By S.Kheirkhah</p>
             <p className="text-slate-300">
               2-Player Crypto Trading Game
             </p>
