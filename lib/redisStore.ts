@@ -21,6 +21,13 @@ const memStore = new Map<string, Game>();
 let _redis: Redis | null = null;
 function getRedis(): Redis | null {
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[redisStore] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set. ' +
+        'Falling back to in-memory store — state will NOT be shared across Lambda instances. ' +
+        'Set env vars in Vercel dashboard: https://upstash.com'
+      );
+    }
     return null;
   }
   if (!_redis) {

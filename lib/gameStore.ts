@@ -39,8 +39,10 @@ export async function joinGame(
 ): Promise<{ success: boolean; message: string; game?: Game }> {
   const game = await getOrCreateGame(roomId);
 
+  // Idempotent — player already in the room is a success, not an error.
+  // This handles page refreshes and Vercel multi-instance scenarios.
   if (game.players[playerNumber]) {
-    return { success: false, message: `Player ${playerNumber} already joined this room` };
+    return { success: true, message: `Player ${playerNumber} already in room`, game };
   }
 
   const newPlayer: Player = {

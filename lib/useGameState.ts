@@ -7,18 +7,20 @@ export function useGameState(roomId: string, enabled: boolean = true) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Cache serialized state so we only trigger re-renders when data actually changes
   const lastJson = useRef<string>('');
+  // Only surface an error after this many consecutive failures
+  const failCount = useRef(0);
+  const ERROR_THRESHOLD = 5;
 
   useEffect(() => {
     if (!enabled || !roomId) {
       return;
     }
 
-    // Reset on first enable
     setLoading(true);
     setError(null);
     lastJson.current = '';
+    failCount.current = 0;
 
     const fetchGameState = async () => {
       try {
@@ -33,7 +35,7 @@ export function useGameState(roomId: string, enabled: boolean = true) {
         const data = await response.json();
         const newJson = JSON.stringify(data.gameState);
 
-        // Only re-render when state actually changed
+        failCount.current = 0;
         if (newJson !== lastJson.current) {
           lastJson.current = newJson;
           setGameState(data.gameState);
@@ -41,16 +43,22 @@ export function useGameState(roomId: string, enabled: boolean = true) {
         setError(null);
         setLoading(false);
       } catch (err) {
-        // Preserve last known state on transient network errors
-        setGameState((prev) => {
-          if (prev === null) {
-            setError(
-              err instanceof Error ? err.message : 'Failed to fetch game state'
-            );
-            setLoading(false);
-          }
-          return prev;
-        });
+        failCount.current += 1;
+        // Only show the error UI after ERROR_THRESHOLD consecutive failures.
+        // This silently absorbs transient 404s that happen when Lambda
+        // instances haven't shared state yet (no Redis configured).
+        if (failCount.current >= ERROR_THRESHOLD) {
+          setGameState((prev) => {
+            if (prev === null) {
+              setError(
+                err instanceof Error ? err.message : 'Failed to fetch game state'
+              );
+              setLoading(false);
+            }
+            return prev;
+          });
+        }
+        // Otherwise keep loading silently
       }
     };
 
