@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const gameState = getGameState(roomId);
+    const gameState = await getGameState(roomId);
 
     if (!gameState) {
       return NextResponse.json(

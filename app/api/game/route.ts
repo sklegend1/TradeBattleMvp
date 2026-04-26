@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const game = getOrCreateGame(roomId);
+    const game = await getOrCreateGame(roomId);
 
     return NextResponse.json({ success: true, game }, { status: 200 });
   } catch (error) {

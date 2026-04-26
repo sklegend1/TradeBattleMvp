@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = joinGame(roomId, player);
+    const result = await joinGame(roomId, player);
 
     if (!result.success) {
       return NextResponse.json(

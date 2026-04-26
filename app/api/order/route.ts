@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const game = getGame(roomId);
+    const game = await getGame(roomId);
     if (!game) {
       return NextResponse.json(
         { error: 'Game not found' },
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       openTime: Date.now(),
     };
 
-    const result = updatePlayerPosition(roomId, player as '1' | '2', position);
+    const result = await updatePlayerPosition(roomId, player as '1' | '2', position);
 
     if (!result.success) {
       return NextResponse.json(

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const game = getGame(roomId);
+    const game = await getGame(roomId);
     if (!game) {
       return NextResponse.json(
         { error: 'Game not found' },
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     const currentPrice = await getBTCPrice();
 
     // Close position and calculate PnL
-    const result = closePosition(roomId, player as '1' | '2', currentPrice);
+    const result = await closePosition(roomId, player as '1' | '2', currentPrice);
 
     if (!result.success) {
       return NextResponse.json(

@@ -71,7 +71,7 @@ export default function GamePage({
           throw new Error('Failed to fetch price');
         }
         const data = await response.json();
-        setCurrentPrice(data.price);
+        setCurrentPrice((prev) => (prev === data.price ? prev : data.price));
         setPriceLoadingError(null);
       } catch (err) {
         setPriceLoadingError('Unable to fetch BTC price');
@@ -357,7 +357,6 @@ export default function GamePage({
             <h2 className="text-xl font-bold text-white mb-3">BTC Price Chart</h2>
             <PriceChart
               price={currentPrice}
-              timestamp={Date.now()}
               entryPrice={player?.position?.entryPrice ?? null}
               positionType={player?.position?.type ?? null}
             />
