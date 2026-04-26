@@ -1,14 +1,47 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { createChart, AreaSeries, ColorType, UTCTimestamp, ISeriesApi } from 'lightweight-charts';
+import {
+  createChart,
+  CandlestickSeries,
+  ColorType,
+  UTCTimestamp,
+  ISeriesApi,
+  IPriceLine,
+  LineStyle,
+} from 'lightweight-charts';
 
-export function PriceChart({ price, timestamp }: { price: number; timestamp: number }) {
+interface Candle {
+  time: UTCTimestamp;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+// Aggregate 1-second ticks into N-second candles
+const CANDLE_SECONDS = 5;
+
+function candleTime(ts: number): UTCTimestamp {
+  const sec = Math.floor(ts / 1000);
+  return (Math.floor(sec / CANDLE_SECONDS) * CANDLE_SECONDS) as UTCTimestamp;
+}
+
+interface PriceChartProps {
+  price: number;
+  timestamp: number;
+  entryPrice?: number | null;
+  positionType?: 'buy' | 'sell' | null;
+}
+
+export function PriceChart({ price, timestamp, entryPrice, positionType }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
-  const dataRef = useRef<{ time: UTCTimestamp; value: number }[]>([]);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const candlesRef = useRef<Map<UTCTimestamp, Candle>>(new Map());
+  const priceLineRef = useRef<IPriceLine | null>(null);
 
+  // ── Init chart once ──────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -19,30 +52,31 @@ export function PriceChart({ price, timestamp }: { price: number; timestamp: num
       },
       width: containerRef.current.clientWidth,
       height: 300,
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: true,
-      },
+      timeScale: { timeVisible: true, secondsVisible: true },
       grid: {
         vertLines: { color: 'rgba(255,255,255,0.05)' },
         horzLines: { color: 'rgba(255,255,255,0.05)' },
       },
     });
 
-    const series = chart.addSeries(AreaSeries, {
-      lineColor: '#3b82f6',
-      topColor: 'rgba(59,130,246,0.4)',
-      bottomColor: 'rgba(59,130,246,0.0)',
-      lineWidth: 2,
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
     });
 
-    const initialData = { time: Math.floor(timestamp / 1000) as UTCTimestamp, value: price };
-    series.setData([initialData]);
+    // Seed with the very first candle
+    const t = candleTime(timestamp);
+    const seed: Candle = { time: t, open: price, high: price, low: price, close: price };
+    candlesRef.current.set(t, seed);
+    series.setData([seed]);
     chart.timeScale().fitContent();
 
     chartRef.current = chart;
     seriesRef.current = series;
-    dataRef.current = [initialData];
 
     const handleResize = () => {
       if (containerRef.current && chartRef.current) {
@@ -54,29 +88,72 @@ export function PriceChart({ price, timestamp }: { price: number; timestamp: num
     return () => {
       window.removeEventListener('resize', handleResize);
       chartRef.current?.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+      priceLineRef.current = null;
     };
   }, []);
 
-  // Update price data on every new second
+  // ── Update candles on every price tick ──────────────────────
   useEffect(() => {
-    if (!seriesRef.current || !dataRef.current.length) return;
+    const series = seriesRef.current;
+    if (!series || price === 0) return;
 
-    const timeInSeconds = Math.floor(timestamp / 1000) as UTCTimestamp;
-    const last = dataRef.current[dataRef.current.length - 1];
+    const t = candleTime(timestamp);
+    const existing = candlesRef.current.get(t);
 
-    if (last.time === timeInSeconds) return; // same second, skip
+    if (existing) {
+      // Update current candle's high / low / close
+      existing.high = Math.max(existing.high, price);
+      existing.low = Math.min(existing.low, price);
+      existing.close = price;
+      series.update(existing);
+    } else {
+      // New candle — open equals previous close
+      const prev = [...candlesRef.current.values()].at(-1);
+      const newCandle: Candle = {
+        time: t,
+        open: prev?.close ?? price,
+        high: price,
+        low: price,
+        close: price,
+      };
+      candlesRef.current.set(t, newCandle);
 
-    const newPoint = { time: timeInSeconds, value: price };
-    dataRef.current.push(newPoint);
+      // Keep at most 60 candles (5 min at 5 sec/candle)
+      if (candlesRef.current.size > 60) {
+        const firstKey = candlesRef.current.keys().next().value as UTCTimestamp;
+        candlesRef.current.delete(firstKey);
+      }
 
-    // Keep at most 300 points (5 min at 1/sec)
-    if (dataRef.current.length > 300) {
-      dataRef.current = dataRef.current.slice(-300);
+      series.setData([...candlesRef.current.values()]);
+      chartRef.current?.timeScale().fitContent();
+    }
+  }, [price, timestamp]);
+
+  // ── Entry price line ─────────────────────────────────────────
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    // Remove existing line
+    if (priceLineRef.current) {
+      series.removePriceLine(priceLineRef.current);
+      priceLineRef.current = null;
     }
 
-    seriesRef.current.setData(dataRef.current);
-    chartRef.current?.timeScale().fitContent();
-  }, [price, timestamp]);
+    if (entryPrice && entryPrice > 0) {
+      const color = positionType === 'sell' ? '#ef4444' : '#22c55e';
+      priceLineRef.current = series.createPriceLine({
+        price: entryPrice,
+        color,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: positionType === 'sell' ? 'SHORT' : 'LONG',
+      });
+    }
+  }, [entryPrice, positionType]);
 
   return (
     <div
