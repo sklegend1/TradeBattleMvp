@@ -1,7 +1,5 @@
 import { Game, Player } from './types';
-
-// Global in-memory store for games
-const games: Record<string, Game> = {};
+import { readGame, writeGame, deleteGame, deleteAllGames } from './fileStore';
 
 const DEFAULT_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 const INITIAL_BALANCE = 1000;
@@ -11,37 +9,35 @@ const CLEANUP_TIMEOUT = 1 * 60 * 60 * 1000; // 1 hour
  * Get or create a game room
  */
 export function getOrCreateGame(roomId: string): Game {
-  if (!games[roomId]) {
-    games[roomId] = {
+  let game = readGame(roomId);
+
+  if (!game) {
+    game = {
       id: roomId,
-      players: {
-        '1': null,
-        '2': null,
-      },
+      players: { '1': null, '2': null },
       startTime: null,
       duration: DEFAULT_DURATION,
       status: 'waiting',
       createdAt: Date.now(),
     };
+    writeGame(game);
+    return game;
   }
 
-  // Check if game is expired and needs cleanup
-  if (
-    games[roomId].status === 'finished' &&
-    Date.now() - games[roomId].createdAt > CLEANUP_TIMEOUT
-  ) {
-    delete games[roomId];
-    return getOrCreateGame(roomId); // Recreate
+  // Clean up expired finished games
+  if (game.status === 'finished' && Date.now() - game.createdAt > CLEANUP_TIMEOUT) {
+    deleteGame(roomId);
+    return getOrCreateGame(roomId);
   }
 
-  return games[roomId];
+  return game;
 }
 
 /**
  * Get an existing game
  */
 export function getGame(roomId: string): Game | null {
-  return games[roomId] || null;
+  return readGame(roomId);
 }
 
 /**
@@ -75,6 +71,8 @@ export function joinGame(
     game.startTime = Date.now();
   }
 
+  writeGame(game);
+
   return {
     success: true,
     message: `Player ${playerNumber} joined successfully`,
@@ -88,19 +86,16 @@ export function joinGame(
 export function updatePlayerPosition(
   roomId: string,
   playerNumber: '1' | '2',
-  position: any
+  position: Player['position']
 ): { success: boolean; game?: Game; message?: string } {
   const game = getGame(roomId);
-  if (!game) {
-    return { success: false, message: 'Game not found' };
-  }
+  if (!game) return { success: false, message: 'Game not found' };
 
   const player = game.players[playerNumber];
-  if (!player) {
-    return { success: false, message: 'Player not found' };
-  }
+  if (!player) return { success: false, message: 'Player not found' };
 
   player.position = position;
+  writeGame(game);
   return { success: true, game };
 }
 
@@ -113,16 +108,13 @@ export function updatePlayerBalance(
   newBalance: number
 ): { success: boolean; game?: Game; message?: string } {
   const game = getGame(roomId);
-  if (!game) {
-    return { success: false, message: 'Game not found' };
-  }
+  if (!game) return { success: false, message: 'Game not found' };
 
   const player = game.players[playerNumber];
-  if (!player) {
-    return { success: false, message: 'Player not found' };
-  }
+  if (!player) return { success: false, message: 'Player not found' };
 
   player.balance = newBalance;
+  writeGame(game);
   return { success: true, game };
 }
 
@@ -131,17 +123,16 @@ export function updatePlayerBalance(
  */
 export function getGameState(roomId: string) {
   const game = getGame(roomId);
-  if (!game) {
-    return null;
-  }
+  if (!game) return null;
 
   let remainingTime = game.duration;
   if (game.status === 'running' && game.startTime) {
     remainingTime = Math.max(0, game.duration - (Date.now() - game.startTime));
 
     // Auto-finish game if time is up
-    if (remainingTime === 0 && game.status === 'running') {
+    if (remainingTime === 0) {
       game.status = 'finished';
+      writeGame(game);
     }
   }
 
@@ -164,31 +155,24 @@ export function closePosition(
   currentPrice: number
 ): { success: boolean; pnl?: number; game?: Game; message?: string } {
   const game = getGame(roomId);
-  if (!game) {
-    return { success: false, message: 'Game not found' };
-  }
+  if (!game) return { success: false, message: 'Game not found' };
 
   const player = game.players[playerNumber];
-  if (!player) {
-    return { success: false, message: 'Player not found' };
-  }
+  if (!player) return { success: false, message: 'Player not found' };
 
-  if (!player.position) {
-    return { success: false, message: 'No active position' };
-  }
+  if (!player.position) return { success: false, message: 'No active position' };
 
   const { type, entryPrice } = player.position;
-  const SIZE = 1; // Standard position size
+  const SIZE = 1;
 
-  let pnl = 0;
-  if (type === 'buy') {
-    pnl = (currentPrice - entryPrice) * SIZE;
-  } else {
-    pnl = (entryPrice - currentPrice) * SIZE;
-  }
+  const pnl =
+    type === 'buy'
+      ? (currentPrice - entryPrice) * SIZE
+      : (entryPrice - currentPrice) * SIZE;
 
   player.balance += pnl;
   player.position = null;
+  writeGame(game);
 
   return { success: true, pnl, game };
 }
@@ -197,7 +181,5 @@ export function closePosition(
  * Reset all games (for testing)
  */
 export function resetGames(): void {
-  Object.keys(games).forEach((key) => {
-    delete games[key];
-  });
+  deleteAllGames();
 }
